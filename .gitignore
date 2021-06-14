@@ -1,0 +1,6 @@
+/.idea
+/*.coverprofile
+/.vscode
+/bench-*.txt
+/vendor
+/bin
