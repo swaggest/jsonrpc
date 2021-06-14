@@ -1,5 +1,5 @@
-module github.com/bool64/go-template
+module github.com/swaggest/jsonrpc
 
 go 1.16
 
-require github.com/bool64/dev v0.1.29
+require github.com/bool64/dev v0.1.35
