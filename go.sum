@@ -1,5 +1,5 @@
-github.com/bool64/dev v0.1.29 h1:nt1/QMD9EzuEvYPRt2sXTCLpgzalMSq0w3UqTKeINDQ=
-github.com/bool64/dev v0.1.29/go.mod h1:cTHiTDNc8EewrQPy3p1obNilpMpdmlUesDkFTF2zRWU=
+github.com/bool64/dev v0.1.35 h1:uouBAq2kAJ+k9UypYRs118bAYttNQWDyK4IzjfLb5fc=
+github.com/bool64/dev v0.1.35/go.mod h1:cTHiTDNc8EewrQPy3p1obNilpMpdmlUesDkFTF2zRWU=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
