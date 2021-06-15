@@ -2,14 +2,11 @@ package jsonrpc
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"sync"
 
 	"github.com/swaggest/openapi-go/openapi3"
-	"github.com/swaggest/rest"
 	"github.com/swaggest/usecase"
 )
 
@@ -108,12 +105,6 @@ func (c *OpenAPI) setupOutput(oc *openapi3.OperationContext, u usecase.Interacto
 
 	if usecase.As(u, &hasOutput) {
 		oc.Output = hasOutput.OutputPort()
-
-		if rest.OutputHasNoContent(oc.Output) {
-			status = http.StatusNoContent
-		}
-	} else {
-		status = http.StatusNoContent
 	}
 
 	if oc.HTTPStatus == 0 {
@@ -123,17 +114,6 @@ func (c *OpenAPI) setupOutput(oc *openapi3.OperationContext, u usecase.Interacto
 	err := c.Reflector().SetupResponse(*oc)
 	if err != nil {
 		return err
-	}
-
-	if oc.HTTPMethod == http.MethodHead {
-		for code, resp := range oc.Operation.Responses.MapOfResponseOrRefValues {
-			for contentType, cont := range resp.Response.Content {
-				cont.Schema = nil
-				resp.Response.Content[contentType] = cont
-			}
-
-			oc.Operation.Responses.MapOfResponseOrRefValues[code] = resp
-		}
 	}
 
 	return nil
@@ -186,94 +166,6 @@ func (c *OpenAPI) processUseCase(op *openapi3.Operation, u usecase.Interactor) {
 	if usecase.As(u, &hasDeprecated) && hasDeprecated.IsDeprecated() {
 		op.WithDeprecated(true)
 	}
-}
-
-func (c *OpenAPI) provideHeaderSchemas(resp *openapi3.Response, validator rest.JSONSchemaValidator) error {
-	for name, h := range resp.Headers {
-		if h.Header.Schema == nil {
-			continue
-		}
-
-		hh := h.Header
-		schema := hh.Schema.ToJSONSchema(c.Reflector().Spec)
-
-		var (
-			err        error
-			schemaData []byte
-		)
-
-		if !schema.IsTrivial(c.Reflector().ResolveJSONSchemaRef) {
-			schemaData, err = schema.JSONSchemaBytes()
-			if err != nil {
-				return fmt.Errorf("failed to build JSON Schema for response header (%s)", name)
-			}
-		}
-
-		required := false
-		if hh.Required != nil && *hh.Required {
-			required = true
-		}
-
-		if validator != nil {
-			err = validator.AddSchema(rest.ParamInHeader, name, schemaData, required)
-			if err != nil {
-				return fmt.Errorf("failed to add validation schema for response header (%s): %w", name, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// ProvideResponseJSONSchemas provides JSON schemas for response structure.
-func (c *OpenAPI) ProvideResponseJSONSchemas(
-	statusCode int,
-	contentType string,
-	output interface{},
-	headerMapping map[string]string,
-	validator rest.JSONSchemaValidator,
-) error {
-	op := openapi3.Operation{}
-	oc := openapi3.OperationContext{
-		Operation:         &op,
-		HTTPStatus:        statusCode,
-		Output:            output,
-		RespHeaderMapping: headerMapping,
-		RespContentType:   contentType,
-	}
-
-	if err := c.Reflector().SetupResponse(oc); err != nil {
-		return err
-	}
-
-	resp := op.Responses.MapOfResponseOrRefValues[strconv.Itoa(statusCode)].Response
-
-	if err := c.provideHeaderSchemas(resp, validator); err != nil {
-		return err
-	}
-
-	for _, cont := range resp.Content {
-		if cont.Schema == nil {
-			continue
-		}
-
-		schema := cont.Schema.ToJSONSchema(c.Reflector().Spec)
-
-		if schema.IsTrivial(c.Reflector().ResolveJSONSchemaRef) {
-			continue
-		}
-
-		schemaData, err := schema.JSONSchemaBytes()
-		if err != nil {
-			return errors.New("failed to build JSON Schema for response body")
-		}
-
-		if err := validator.AddSchema(rest.ParamInBody, "body", schemaData, false); err != nil {
-			return fmt.Errorf("failed to add validation schema for response body: %w", err)
-		}
-	}
-
-	return nil
 }
 
 func (c *OpenAPI) ServeHTTP(rw http.ResponseWriter, _ *http.Request) {
