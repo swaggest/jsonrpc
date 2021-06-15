@@ -7,4 +7,4 @@
 ![Code lines](https://sloc.xyz/github/swaggest/jsonrpc/?category=code)
 ![Comments](https://sloc.xyz/github/swaggest/jsonrpc/?category=comments)
 
-Self-documented [JSON-RPC](https://www.jsonrpc.org/) server in Go.
+Self-documented [JSON-RPC](https://www.jsonrpc.org/) 2.0 server in Go.
