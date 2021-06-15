@@ -78,10 +78,7 @@ func (c *OpenAPI) Collect(
 			return fmt.Errorf("failed to setup response: %w", err)
 		}
 
-		err = c.processUseCase(op, u)
-		if err != nil {
-			return err
-		}
+		c.processUseCase(op, u)
 
 		for _, setup := range c.annotations[name] {
 			err = setup(op)
@@ -161,7 +158,7 @@ func (c *OpenAPI) setupInput(oc *openapi3.OperationContext, u usecase.Interactor
 	return nil
 }
 
-func (c *OpenAPI) processUseCase(op *openapi3.Operation, u usecase.Interactor) error {
+func (c *OpenAPI) processUseCase(op *openapi3.Operation, u usecase.Interactor) {
 	var (
 		hasName        usecase.HasName
 		hasTitle       usecase.HasTitle
@@ -189,100 +186,6 @@ func (c *OpenAPI) processUseCase(op *openapi3.Operation, u usecase.Interactor) e
 	if usecase.As(u, &hasDeprecated) && hasDeprecated.IsDeprecated() {
 		op.WithDeprecated(true)
 	}
-
-	return nil
-}
-
-func (c *OpenAPI) provideParametersJSONSchemas(op openapi3.Operation, validator rest.JSONSchemaValidator) error {
-	for _, p := range op.Parameters {
-		if p.Parameter.Schema == nil {
-			continue
-		}
-
-		pp := p.Parameter
-		schema := pp.Schema.ToJSONSchema(c.Reflector().Spec)
-
-		var (
-			err        error
-			schemaData []byte
-		)
-
-		if !schema.IsTrivial(c.Reflector().ResolveJSONSchemaRef) {
-			schemaData, err = schema.JSONSchemaBytes()
-			if err != nil {
-				return fmt.Errorf("failed to build JSON Schema for parameter (%s, %s)", pp.In, pp.Name)
-			}
-		}
-
-		required := false
-		if pp.Required != nil && *pp.Required {
-			required = true
-		}
-
-		if validator != nil {
-			err = validator.AddSchema(rest.ParamIn(pp.In), pp.Name, schemaData, required)
-			if err != nil {
-				return fmt.Errorf("failed to add validation schema for parameter (%s, %s): %w", pp.In, pp.Name, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// ProvideRequestJSONSchemas provides JSON Schemas for request structure.
-func (c *OpenAPI) ProvideRequestJSONSchemas(
-	method string,
-	input interface{},
-	mapping rest.RequestMapping,
-	validator rest.JSONSchemaValidator,
-) error {
-	op := openapi3.Operation{}
-	oc := openapi3.OperationContext{
-		Operation:  &op,
-		HTTPMethod: method,
-		Input:      input,
-	}
-
-	err := c.Reflector().SetupRequest(oc)
-	if err != nil {
-		return err
-	}
-
-	err = c.provideParametersJSONSchemas(op, validator)
-	if err != nil {
-		return err
-	}
-
-	if op.RequestBody != nil && op.RequestBody.RequestBody != nil {
-		for ct, content := range op.RequestBody.RequestBody.Content {
-			var in rest.ParamIn
-
-			switch ct {
-			case "application/json":
-				in = rest.ParamInBody
-			default:
-				continue
-			}
-
-			schema := content.Schema.ToJSONSchema(c.Reflector().Spec)
-			if schema.IsTrivial(c.Reflector().ResolveJSONSchemaRef) {
-				continue
-			}
-
-			schemaData, err := schema.JSONSchemaBytes()
-			if err != nil {
-				return errors.New("failed to build JSON Schema for request body")
-			}
-
-			err = validator.AddSchema(in, "body", schemaData, false)
-			if err != nil {
-				return fmt.Errorf("failed to add validation schema for request body: %w", err)
-			}
-		}
-	}
-
-	return nil
 }
 
 func (c *OpenAPI) provideHeaderSchemas(resp *openapi3.Response, validator rest.JSONSchemaValidator) error {

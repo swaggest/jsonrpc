@@ -7,6 +7,6 @@ require (
 	github.com/go-chi/chi/v5 v5.0.3
 	github.com/swaggest/openapi-go v0.2.10
 	github.com/swaggest/rest v0.2.7
-	github.com/swaggest/swgui v1.2.3
+	github.com/swaggest/swgui v1.3.0
 	github.com/swaggest/usecase v0.1.5
 )

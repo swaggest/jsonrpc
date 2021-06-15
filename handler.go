@@ -14,16 +14,21 @@ import (
 	"github.com/swaggest/usecase"
 )
 
+// ErrorCode is an JSON-RPC 2.0 error code.
 type ErrorCode int
 
+// Standard error codes.
 const (
-	CodeParseError     = -32700
-	CodeInvalidRequest = -32600
-	CodeMethodNotFound = -32601
-	CodeInvalidParams  = -32602
-	CodeInternalError  = -32603
+	CodeParseError     = ErrorCode(-32700)
+	CodeInvalidRequest = ErrorCode(-32600)
+	CodeMethodNotFound = ErrorCode(-32601)
+	CodeInvalidParams  = ErrorCode(-32602)
+	CodeInternalError  = ErrorCode(-32603)
 )
 
+const ver = "2.0"
+
+// Handler serves JSON-RPC 2.0 methods with HTTP.
 type Handler struct {
 	OpenAPI *OpenAPI
 
@@ -31,9 +36,6 @@ type Handler struct {
 }
 
 type method struct {
-	// failingUseCase allows to pass input decoding error through use case middlewares.
-	failingUseCase usecase.Interactor
-
 	useCase usecase.Interactor
 
 	inputBufferType  reflect.Type
@@ -72,14 +74,13 @@ func (h *method) setupOutputBuffer() {
 	}
 }
 
+// Add registers use case interactor as JSON-RPC method.
 func (h *Handler) Add(u usecase.Interactor) {
 	if h.methods == nil {
 		h.methods = make(map[string]method)
 	}
 
-	var (
-		withName usecase.HasName
-	)
+	var withName usecase.HasName
 
 	if !usecase.As(u, &withName) {
 		panic("use case name is required")
@@ -101,6 +102,7 @@ func (h *Handler) Add(u usecase.Interactor) {
 	}
 }
 
+// Request is an JSON-RPC request item.
 type Request struct {
 	JSONRPC string          `json:"jsonrpc"`
 	Method  string          `json:"method"`
@@ -108,6 +110,7 @@ type Request struct {
 	ID      *interface{}    `json:"id,omitempty"`
 }
 
+// Response is an JSON-RPC response item.
 type Response struct {
 	JSONRPC string          `json:"jsonrpc"`
 	Result  json.RawMessage `json:"result,omitempty"`
@@ -115,15 +118,14 @@ type Response struct {
 	ID      *interface{}    `json:"id"`
 }
 
+// Error describes JSON-RPC error structure.
 type Error struct {
 	Code    ErrorCode    `json:"code"`
 	Message string       `json:"message"`
-	Data    *interface{} `json:"data,omitemptys"`
+	Data    *interface{} `json:"data,omitempty"`
 }
 
-var (
-	errEmptyBody = errors.New("empty body")
-)
+var errEmptyBody = errors.New("empty body")
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset: utf-8")
@@ -131,92 +133,119 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	reqBody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		h.fail(w, fmt.Errorf("failed to read request body: %w", err), CodeParseError)
+
 		return
 	}
 
 	reqBody = bytes.TrimLeft(reqBody, " \t\r\n")
 	if len(reqBody) == 0 {
 		h.fail(w, errEmptyBody, CodeParseError)
+
 		return
 	}
 
 	ctx := r.Context()
 
 	if reqBody[0] == '[' {
-		var reqs []Request
-		if err := json.Unmarshal(reqBody, &reqs); err != nil {
-			h.fail(w, fmt.Errorf("failed to unmarshal request: %w", err), CodeInvalidRequest)
-
-			return
-		}
-
-		wg := sync.WaitGroup{}
-		wg.Add(len(reqs))
-
-		resps := make([]*Response, 0, len(reqs))
-		for _, req := range reqs {
-			req := req
-			var resp Response
-
-			if req.ID != nil {
-				resp.ID = req.ID
-				resps = append(resps, &resp)
-			}
-
-			go func() {
-				defer wg.Done()
-
-				h.invoke(ctx, req, &resp)
-			}()
-		}
-
-		wg.Wait()
-
-		data, err := json.Marshal(resps)
-		if err != nil {
-			h.fail(w, err, CodeInternalError)
-
-			return
-		}
-		if _, err := w.Write(data); err != nil {
-			h.fail(w, err, CodeInternalError)
-		}
+		h.serveBatch(ctx, w, reqBody)
 
 		return
-	} else {
-		var (
-			req  Request
-			resp Response
-		)
-		if err := json.Unmarshal(reqBody, &req); err != nil {
-			h.fail(w, fmt.Errorf("failed to unmarshal request: %w", err), CodeParseError)
+	}
 
-			return
+	var (
+		req  Request
+		resp Response
+	)
+
+	if err := json.Unmarshal(reqBody, &req); err != nil {
+		h.fail(w, fmt.Errorf("failed to unmarshal request: %w", err), CodeParseError)
+
+		return
+	}
+
+	resp.ID = req.ID
+	resp.JSONRPC = ver
+
+	if req.JSONRPC != ver {
+		h.fail(w, fmt.Errorf("invalid jsonrpc value: %q", req.JSONRPC), CodeInvalidRequest)
+
+		return
+	}
+
+	h.invoke(ctx, req, &resp)
+
+	if req.ID == nil {
+		return
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		h.fail(w, err, CodeInternalError)
+
+		return
+	}
+
+	if _, err := w.Write(data); err != nil {
+		h.fail(w, err, CodeInternalError)
+	}
+}
+
+func (h *Handler) serveBatch(ctx context.Context, w http.ResponseWriter, reqBody []byte) {
+	var reqs []Request
+	if err := json.Unmarshal(reqBody, &reqs); err != nil {
+		h.fail(w, fmt.Errorf("failed to unmarshal request: %w", err), CodeInvalidRequest)
+
+		return
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(reqs))
+
+	resps := make([]*Response, 0, len(reqs))
+
+	for _, req := range reqs {
+		req := req
+		resp := Response{
+			JSONRPC: ver,
 		}
 
-		resp.ID = req.ID
-		h.invoke(ctx, req, &resp)
-
-		if req.ID == nil {
-			return
+		if req.ID != nil {
+			resp.ID = req.ID
+			resps = append(resps, &resp)
 		}
 
-		data, err := json.Marshal(resp)
-		if err != nil {
-			h.fail(w, err, CodeInternalError)
+		if req.JSONRPC != ver {
+			resp.Error = &Error{
+				Code:    CodeInvalidRequest,
+				Message: fmt.Sprintf("invalid jsonrpc value: %q", req.JSONRPC),
+			}
 
-			return
+			continue
 		}
-		if _, err := w.Write(data); err != nil {
-			h.fail(w, err, CodeInternalError)
-		}
+
+		go func() {
+			defer wg.Done()
+
+			h.invoke(ctx, req, &resp)
+		}()
+	}
+
+	wg.Wait()
+
+	data, err := json.Marshal(resps)
+	if err != nil {
+		h.fail(w, err, CodeInternalError)
+
+		return
+	}
+
+	if _, err := w.Write(data); err != nil {
+		h.fail(w, err, CodeInternalError)
 	}
 }
 
 func (h *Handler) invoke(ctx context.Context, req Request, resp *Response) {
-	var (
-		input, output interface{}
-	)
+	var input, output interface{}
 
 	m, found := h.methods[req.Method]
 	if !found {
@@ -253,21 +282,22 @@ func (h *Handler) invoke(ctx context.Context, req Request, resp *Response) {
 		return
 	}
 
-	if data, err := json.Marshal(output); err != nil {
+	data, err := json.Marshal(output)
+	if err != nil {
 		resp.Error = &Error{
 			Code:    CodeInternalError,
 			Message: fmt.Sprintf("failed to marshal result: %s", err.Error()),
 		}
 
 		return
-	} else {
-		resp.Result = data
 	}
+
+	resp.Result = data
 }
 
 func (h *Handler) fail(w http.ResponseWriter, err error, code ErrorCode) {
 	resp := Response{
-		JSONRPC: "2.0",
+		JSONRPC: ver,
 		Error: &Error{
 			Code:    code,
 			Message: err.Error(),
@@ -277,11 +307,14 @@ func (h *Handler) fail(w http.ResponseWriter, err error, code ErrorCode) {
 	data, err := json.Marshal(resp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+
 		return
 	}
+
 	_, err = w.Write(data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+
 		return
 	}
 }
