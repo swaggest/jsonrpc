@@ -21,6 +21,8 @@ func main() {
 
 	h := &jsonrpc.Handler{}
 	h.OpenAPI = &apiSchema
+	h.Validator = &jsonrpc.JSONSchemaValidator{}
+	h.SkipResultValidation = true
 
 	type inp struct {
 		Name string `json:"name"`
