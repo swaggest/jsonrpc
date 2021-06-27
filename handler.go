@@ -30,12 +30,20 @@ const ver = "2.0"
 
 // Handler serves JSON-RPC 2.0 methods with HTTP.
 type Handler struct {
-	OpenAPI *OpenAPI
+	OpenAPI     *OpenAPI
+	Validator   Validator
+	Middlewares []usecase.Middleware
+
+	SkipParamsValidation bool
+	SkipResultValidation bool
 
 	methods map[string]method
 }
 
 type method struct {
+	// failingUseCase allows to pass input decoding error through use case middlewares.
+	failingUseCase usecase.Interactor
+
 	useCase usecase.Interactor
 
 	inputBufferType  reflect.Type
@@ -74,6 +82,8 @@ func (h *method) setupOutputBuffer() {
 	}
 }
 
+type errCtxKey struct{}
+
 // Add registers use case interactor as JSON-RPC method.
 func (h *Handler) Add(u usecase.Interactor) {
 	if h.methods == nil {
@@ -86,8 +96,16 @@ func (h *Handler) Add(u usecase.Interactor) {
 		panic("use case name is required")
 	}
 
+	var fu usecase.Interactor = usecase.Interact(func(ctx context.Context, input, output interface{}) error {
+		return ctx.Value(errCtxKey{}).(error)
+	})
+
+	u = usecase.Wrap(u, h.Middlewares...)
+	fu = usecase.Wrap(fu, h.Middlewares...)
+
 	m := method{
-		useCase: u,
+		useCase:        u,
+		failingUseCase: fu,
 	}
 	m.setupInputBuffer()
 	m.setupOutputBuffer()
@@ -95,7 +113,7 @@ func (h *Handler) Add(u usecase.Interactor) {
 	h.methods[withName.Name()] = m
 
 	if h.OpenAPI != nil {
-		err := h.OpenAPI.Collect(withName.Name(), u)
+		err := h.OpenAPI.Collect(withName.Name(), u, h.Validator)
 		if err != nil {
 			panic(fmt.Sprintf("failed to add to OpenAPI schema: %s", err.Error()))
 		}
@@ -120,9 +138,9 @@ type Response struct {
 
 // Error describes JSON-RPC error structure.
 type Error struct {
-	Code    ErrorCode    `json:"code"`
-	Message string       `json:"message"`
-	Data    *interface{} `json:"data,omitempty"`
+	Code    ErrorCode   `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
 var errEmptyBody = errors.New("empty body")
@@ -244,6 +262,11 @@ func (h *Handler) serveBatch(ctx context.Context, w http.ResponseWriter, reqBody
 	}
 }
 
+type structuredErrorData struct {
+	Error   string                 `json:"error"`
+	Context map[string]interface{} `json:"context"`
+}
+
 func (h *Handler) invoke(ctx context.Context, req Request, resp *Response) {
 	var input, output interface{}
 
@@ -259,12 +282,7 @@ func (h *Handler) invoke(ctx context.Context, req Request, resp *Response) {
 
 	if m.inputBufferType != nil {
 		input = reflect.New(m.inputBufferType).Interface()
-		if err := json.Unmarshal(req.Params, input); err != nil {
-			resp.Error = &Error{
-				Code:    CodeInvalidParams,
-				Message: fmt.Sprintf("failed to unmarshal parameters: %s", err.Error()),
-			}
-
+		if !h.decode(ctx, m, req, resp, input) {
 			return
 		}
 	}
@@ -274,14 +292,15 @@ func (h *Handler) invoke(ctx context.Context, req Request, resp *Response) {
 	}
 
 	if err := m.useCase.Interact(ctx, input, output); err != nil {
-		resp.Error = &Error{
-			Code:    CodeInternalError,
-			Message: err.Error(),
-		}
+		h.errResp(resp, "operation failed", CodeInternalError, err)
 
 		return
 	}
 
+	h.encode(ctx, m, req, resp, output)
+}
+
+func (h *Handler) encode(ctx context.Context, m method, req Request, resp *Response, output interface{}) {
 	data, err := json.Marshal(output)
 	if err != nil {
 		resp.Error = &Error{
@@ -292,7 +311,62 @@ func (h *Handler) invoke(ctx context.Context, req Request, resp *Response) {
 		return
 	}
 
+	if h.Validator != nil && !h.SkipResultValidation {
+		if err := h.Validator.ValidateResult(req.Method, data); err != nil {
+			if m.failingUseCase != nil {
+				err = m.failingUseCase.Interact(context.WithValue(ctx, errCtxKey{}, err), nil, nil)
+			}
+
+			h.errResp(resp, "invalid result", CodeInternalError, err)
+
+			return
+		}
+	}
+
 	resp.Result = data
+}
+
+func (h *Handler) decode(ctx context.Context, m method, req Request, resp *Response, input interface{}) bool {
+	if err := json.Unmarshal(req.Params, input); err != nil {
+		if m.failingUseCase != nil {
+			err = m.failingUseCase.Interact(context.WithValue(ctx, errCtxKey{}, err), nil, nil)
+		}
+
+		h.errResp(resp, "failed to unmarshal parameters", CodeInvalidParams, err)
+
+		return false
+	}
+
+	if h.Validator != nil && !h.SkipParamsValidation {
+		if err := h.Validator.ValidateParams(req.Method, req.Params); err != nil {
+			if m.failingUseCase != nil {
+				err = m.failingUseCase.Interact(context.WithValue(ctx, errCtxKey{}, err), nil, nil)
+			}
+
+			h.errResp(resp, "invalid parameters", CodeInvalidParams, err)
+
+			return false
+		}
+	}
+
+	return true
+}
+
+func (h *Handler) errResp(resp *Response, msg string, code ErrorCode, err error) {
+	resp.Error = &Error{
+		Code:    code,
+		Message: msg,
+	}
+
+	var se ErrWithFields
+	if errors.As(err, &se) {
+		resp.Error.Data = structuredErrorData{
+			Error:   se.Error(),
+			Context: se.Fields(),
+		}
+	} else if err != nil {
+		resp.Error.Data = err.Error()
+	}
 }
 
 func (h *Handler) fail(w http.ResponseWriter, err error, code ErrorCode) {
