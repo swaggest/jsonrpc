@@ -2,8 +2,10 @@ package jsonrpc
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 
 	"github.com/swaggest/openapi-go/openapi3"
@@ -44,6 +46,7 @@ func (c *OpenAPI) Annotate(name string, setup ...func(op *openapi3.Operation) er
 func (c *OpenAPI) Collect(
 	name string,
 	u usecase.Interactor,
+	v Validator,
 	annotations ...func(*openapi3.Operation) error,
 ) (err error) {
 	c.mu.Lock()
@@ -65,12 +68,12 @@ func (c *OpenAPI) Collect(
 			RespContentType: "application/json",
 		}
 
-		err = c.setupInput(&oc, u)
+		err = c.setupInput(&oc, u, name, v)
 		if err != nil {
 			return fmt.Errorf("failed to setup request: %w", err)
 		}
 
-		err = c.setupOutput(&oc, u)
+		err = c.setupOutput(&oc, u, name, v)
 		if err != nil {
 			return fmt.Errorf("failed to setup response: %w", err)
 		}
@@ -97,7 +100,7 @@ func (c *OpenAPI) Collect(
 	return err
 }
 
-func (c *OpenAPI) setupOutput(oc *openapi3.OperationContext, u usecase.Interactor) error {
+func (c *OpenAPI) setupOutput(oc *openapi3.OperationContext, u usecase.Interactor, method string, v Validator) error {
 	var (
 		hasOutput usecase.HasOutputPort
 		status    = http.StatusOK
@@ -116,10 +119,14 @@ func (c *OpenAPI) setupOutput(oc *openapi3.OperationContext, u usecase.Interacto
 		return err
 	}
 
+	if v != nil {
+		return c.provideResponseJSONSchemas(method, oc.Operation, v)
+	}
+
 	return nil
 }
 
-func (c *OpenAPI) setupInput(oc *openapi3.OperationContext, u usecase.Interactor) error {
+func (c *OpenAPI) setupInput(oc *openapi3.OperationContext, u usecase.Interactor, method string, v Validator) error {
 	var (
 		hasInput usecase.HasInputPort
 
@@ -132,6 +139,10 @@ func (c *OpenAPI) setupInput(oc *openapi3.OperationContext, u usecase.Interactor
 		err = c.Reflector().SetupRequest(*oc)
 		if err != nil {
 			return err
+		}
+
+		if v != nil {
+			return c.provideRequestJSONSchema(method, oc.Operation, v)
 		}
 	}
 
@@ -183,4 +194,68 @@ func (c *OpenAPI) ServeHTTP(rw http.ResponseWriter, _ *http.Request) {
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// ProvideRequestJSONSchemas provides JSON Schemas for request structure.
+func (c *OpenAPI) provideRequestJSONSchema(
+	method string,
+	op *openapi3.Operation,
+	validator Validator,
+) error {
+	if op.RequestBody != nil && op.RequestBody.RequestBody != nil {
+		for ct, content := range op.RequestBody.RequestBody.Content {
+			if ct != "application/json" {
+				continue
+			}
+
+			schema := content.Schema.ToJSONSchema(c.Reflector().Spec)
+			if schema.IsTrivial(c.Reflector().ResolveJSONSchemaRef) {
+				continue
+			}
+
+			schemaData, err := schema.JSONSchemaBytes()
+			if err != nil {
+				return errors.New("failed to build JSON Schema for request body")
+			}
+
+			err = validator.AddParamsSchema(method, schemaData)
+			if err != nil {
+				return fmt.Errorf("failed to add validation schema for request body: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// provideResponseJSONSchemas provides JSON schemas for response structure.
+func (c *OpenAPI) provideResponseJSONSchemas(
+	method string,
+	op *openapi3.Operation,
+	validator Validator,
+) error {
+	resp := op.Responses.MapOfResponseOrRefValues[strconv.Itoa(http.StatusOK)].Response
+
+	for _, cont := range resp.Content {
+		if cont.Schema == nil {
+			continue
+		}
+
+		schema := cont.Schema.ToJSONSchema(c.Reflector().Spec)
+
+		if schema.IsTrivial(c.Reflector().ResolveJSONSchemaRef) {
+			continue
+		}
+
+		schemaData, err := schema.JSONSchemaBytes()
+		if err != nil {
+			return errors.New("failed to build JSON Schema for response body")
+		}
+
+		if err := validator.AddResultSchema(method, schemaData); err != nil {
+			return fmt.Errorf("failed to add validation schema for response body: %w", err)
+		}
+	}
+
+	return nil
 }
