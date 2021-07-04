@@ -60,6 +60,8 @@ func (c *OpenAPI) Collect(
 
 	reflector := c.Reflector()
 
+	reflector.SpecEns().WithMapOfAnythingItem("x-envelope", "jsonrpc-2.0")
+
 	err = reflector.SpecEns().SetupOperation(http.MethodPost, name, func(op *openapi3.Operation) error {
 		oc := openapi3.OperationContext{
 			Operation:       op,
