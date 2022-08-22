@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"reflect"
 	"sync"
@@ -46,7 +46,9 @@ type method struct {
 
 	useCase usecase.Interactor
 
-	inputBufferType  reflect.Type
+	inputBufferType reflect.Type
+	inputIsPtr      bool
+
 	outputBufferType reflect.Type
 }
 
@@ -62,6 +64,7 @@ func (h *method) setupInputBuffer() {
 	if h.inputBufferType != nil {
 		if h.inputBufferType.Kind() == reflect.Ptr {
 			h.inputBufferType = h.inputBufferType.Elem()
+			h.inputIsPtr = true
 		}
 	}
 }
@@ -148,7 +151,7 @@ var errEmptyBody = errors.New("empty body")
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset: utf-8")
 
-	reqBody, err := ioutil.ReadAll(r.Body)
+	reqBody, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.fail(w, fmt.Errorf("failed to read request body: %w", err), CodeParseError)
 
@@ -281,9 +284,15 @@ func (h *Handler) invoke(ctx context.Context, req Request, resp *Response) {
 	}
 
 	if m.inputBufferType != nil {
-		input = reflect.New(m.inputBufferType).Interface()
+		iv := reflect.New(m.inputBufferType)
+		input = iv.Interface()
+
 		if !h.decode(ctx, m, req, resp, input) {
 			return
+		}
+
+		if !m.inputIsPtr {
+			input = iv.Elem().Interface()
 		}
 	}
 

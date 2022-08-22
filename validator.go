@@ -93,7 +93,7 @@ func (jv *JSONSchemaValidator) validate(method string, isParams bool, jsonBody [
 
 	errs := make(ValidationErrors, 1)
 
-	// nolint:errorlint // Error is not wrapped, type assertion is more performant.
+	//nolint:errorlint // Error is not wrapped, type assertion is more performant.
 	if ve, ok := err.(*jsonschema.ValidationError); ok {
 		errs[name] = appendError(errs[name], ve)
 	} else {

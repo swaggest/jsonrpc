@@ -32,8 +32,8 @@ func main() {
 		Len int `json:"len"`
 	}
 
-	u := usecase.NewIOI(new(inp), new(out), func(ctx context.Context, input, output interface{}) error {
-		output.(*out).Len = len(input.(*inp).Name)
+	u := usecase.NewInteractor[*inp, out](func(ctx context.Context, input *inp, output *out) error {
+		output.Len = len(input.Name)
 
 		return nil
 	})
@@ -58,7 +58,7 @@ func main() {
 	// Start server.
 	log.Println("http://localhost:8011/docs")
 
-	if err := http.ListenAndServe(":8011", r); err != nil {
+	if err := http.ListenAndServe("localhost:8011", r); err != nil {
 		log.Fatal(err)
 	}
 }
