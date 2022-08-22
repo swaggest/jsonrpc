@@ -1,0 +1,571 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "FC App",
+    "description": "FinCompare Main App.",
+    "version": "v0.0.0"
+  },
+  "paths": {
+    "/api/v1/inquiry/{inquiry_code}/offer": {
+      "post": {
+        "tags": [
+          "Inquiry"
+        ],
+        "summary": "Inquiry Offer Send",
+        "operationId": "v1_inquiry_fi-automation_send_offer",
+        "description": "If fi-automation requests offer sends it to fc-app",
+        "parameters": [
+          {
+            "name": "inquiry_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+          ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {"$ref":"#/components/schemas/InquiryOfferUpload"}
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "successful operation"
+          }
+        },
+        "security": [
+          {
+            "serviceAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/finance-request/{application_code}/fi-automation/appdata": {
+      "get": {
+        "tags": [
+          "Application"
+        ],
+        "summary": "Application Data",
+        "operationId": "v1_finance-request_fi-automation_appdata_list",
+        "description": "If fi-automation requests application data fc-app sends it",
+        "parameters": [
+          {
+            "name": "application_code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Application data for fi-automation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "serviceAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "InquiryOfferUpload": {
+        "type":"object",
+        "properties": {
+          "fi_comment": {
+            "nullable": false,
+            "type": "string"
+          },
+          "offer_amount": {
+            "nullable": false,
+            "type": "integer"
+          },
+          "extra_data": {
+            "nullable": false,
+            "type": "string"
+          },
+          "files": {
+            "type":"array",
+            "items": {"$ref":"#/components/schemas/FormDataMultipartFile"}
+          }
+        },
+        "additionalProperties":false
+      },
+      "FormDataMultipartFile": {"type":"string","format":"binary","nullable":true},
+      "ApplicationResponse": {
+        "type": "object",
+        "properties": {
+          "financing_amount": {
+            "type": "string"
+          },
+          "business": {
+            "$ref": "#/components/schemas/Business"
+          },
+          "purposes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Purpose"
+            }
+          },
+          "annual_revenue": {
+            "type": "number",
+            "nullable": true
+          },
+          "duration": {
+            "type": "integer"
+          },
+          "placement_owner": {
+            "$ref": "#/components/schemas/PlacementOwnerInfo"
+          },
+          "app_created_at_fc": {
+            "type": "string",
+            "format": "date"
+          },
+          "annual_findata": {
+            "type": "object",
+            "properties": {
+              "net_income": {
+                "type": "number",
+                "nullable": true,
+                "format": "float"
+              },
+              "bank_debt": {
+                "type": "number",
+                "nullable": true,
+                "format": "float"
+              },
+              "liabilities": {
+                "type": "number",
+                "nullable": true,
+                "format": "float"
+              },
+              "bank_debts_less_than_year": {
+                "type": "number",
+                "nullable": true,
+                "format": "float"
+              },
+              "equity": {
+                "type": "number",
+                "nullable": true,
+                "format": "float"
+              },
+              "depreciation": {
+                "type": "number",
+                "nullable": true,
+                "format": "float"
+              },
+              "cash": {
+                "type": "number",
+                "nullable": true,
+                "format": "float"
+              }
+            }
+          },
+          "application_summary": {
+            "type": "object",
+            "properties": {
+              "summary": {
+                "type": "string"
+              },
+              "project_description": {
+                "type": "string"
+              },
+              "special_factors": {
+                "type": "string"
+              }
+            }
+          },
+          "media": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Media"
+            }
+          },
+          "state": {
+            "type": "string"
+          }
+        }
+      },
+      "Business": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "registry_business_purpose": {
+            "type": "string"
+          },
+          "tax_id": {
+            "type": "string"
+          },
+          "advertising_consent": {
+            "type": "integer"
+          },
+          "crefo_score": {
+            "type": "integer"
+          },
+          "company_form": {
+            "$ref": "#/components/schemas/CompanyForm"
+          },
+          "register_no": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "foundation_date": {
+            "type": "string"
+          },
+          "sector": {
+            "$ref": "#/components/schemas/Sector"
+          },
+          "street_address": {
+            "type": "string"
+          },
+          "zip_code": {
+            "type": "string"
+          },
+          "city_name": {
+            "type": "string"
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserBusinessMapping"
+            }
+          },
+          "representatives": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepresentativeMapping"
+            }
+          },
+          "short_crefo": {
+            "type": "string"
+          },
+          "crefo_no": {
+            "type": "string"
+          },
+          "wz_code": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "rank": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "PlacementOwnerInfo": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        }
+      },
+      "UserBusinessMapping": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string"
+          },
+          "date_joined": {
+            "type": "string",
+            "format": "date"
+          },
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "birth_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "is_beneficial_owner": {
+            "type": "boolean"
+          },
+          "is_shareholder": {
+            "type": "boolean"
+          },
+          "tax_id": {
+            "type": "string"
+          },
+          "gender": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "phone2": {
+            "type": "string"
+          },
+          "terms": {
+            "type": "boolean"
+          },
+          "street_address": {
+            "type": "string"
+          },
+          "zip_code": {
+            "type": "string"
+          },
+          "city_name": {
+            "type": "string"
+          },
+          "street_nr": {
+            "type": "string"
+          },
+          "job_title": {
+            "$ref": "#/components/schemas/JobTitle"
+          },
+          "is_primary_contact": {
+            "type": "boolean"
+          },
+          "is_director": {
+            "type": "boolean"
+          },
+          "is_deal_captain": {
+            "type": "boolean"
+          },
+          "is_business_user": {
+            "type": "boolean"
+          },
+          "monthly_income": {
+            "$ref": "#/components/schemas/MonthlyIncome"
+          },
+          "monthly_expenses": {
+            "$ref": "#/components/schemas/MonthlyExpenses"
+          },
+          "birthplace": {
+            "type": "string"
+          },
+          "nationality": {
+            "type": "string"
+          },
+          "iban": {
+            "type": "string"
+          }
+        }
+      },
+      "MonthlyExpenses": {
+        "type": "object",
+        "properties": {
+          "home_type": {
+            "type": "string"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "num_persons_household": {
+            "type": "integer"
+          },
+          "property_monthly_payment": {
+            "type": "integer"
+          },
+          "monthly_rent": {
+            "type": "number",
+            "format": "float"
+          },
+          "property_remaining_debt": {
+            "type": "integer"
+          }
+        }
+      },
+      "MonthlyIncome": {
+        "type": "object",
+        "properties": {
+          "ebit_t1": {
+            "type": "number",
+            "format": "float"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "child_benefit": {
+            "type": "integer"
+          }
+        }
+      },
+      "JobTitle": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name_de": {
+            "type": "string"
+          }
+        }
+      },
+      "Sector": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CompanyForm": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "Purpose": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "RepresentativeMapping": {
+        "type": "object",
+        "properties": {
+          "first_name": {
+            "type": "string"
+          },
+          "last_name": {
+            "type": "string"
+          },
+          "birth_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "birthplace": {
+            "type": "string"
+          },
+          "nationality": {
+            "type": "string"
+          },
+          "is_shareholder": {
+            "type": "boolean"
+          },
+          "is_beneficial_owner": {
+            "type": "boolean"
+          },
+          "tax_id": {
+            "type": "string"
+          },
+          "gender": {
+            "type": "string"
+          },
+          "street": {
+            "type": "string"
+          },
+          "post_code": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "country": {
+            "$ref": "#/components/schemas/Country"
+          }
+        }
+      },
+      "Country": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
+        }
+      },
+      "Media": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "document_type": {
+            "type": "integer"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "serviceAuth": {
+        "type": "apiKey",
+        "name": "Authorization",
+        "in": "header",
+        "description": "Should be in format 'ServicePSK secret-key', for example 'IndicatorsPSK abc123'"
+      }
+    }
+  }
+}
