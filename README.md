@@ -46,8 +46,8 @@ func main() {
 		Len int `json:"len"`
 	}
 
-	u := usecase.NewIOI(new(inp), new(out), func(ctx context.Context, input, output interface{}) error {
-		output.(*out).Len = len(input.(*inp).Name)
+	u := usecase.NewInteractor[*inp, out](func(ctx context.Context, input *inp, output *out) error {
+		output.Len = len(input.Name)
 
 		return nil
 	})
